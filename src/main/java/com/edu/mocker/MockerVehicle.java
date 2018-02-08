@@ -22,31 +22,44 @@ import java.util.Properties;
 
 public class MockerVehicle extends AbstractVerticle {
   private static String PROPERTIES_PATH = null;
-  private int appPort = 9000;
+  private static int APP_PORT = 9000;
+
 
   private static final String[] VALID_METHODS = new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"};
+  private static final String[] FILES_SEARCH = new String[]{
+          ".error.json",
+          ".json",
+          ".error.xml",
+          ".xml",
+  };
 
     private static String PATH = "C:\\www";
 
     // Convenience method so you can run it in your IDE
     public static void main(String[] args) {
-      if( args.length != 1){
-        System.out.println("Debe especificar el directorio de archivos web");
+      if( args.length < 2){
+        System.out.println(String.format("%s %s", App.NAME, App.VERSION));
+        System.out.println("develop by: edu cacho");
+        System.out.println("***");
+        System.out.println("Faltan parametros");
+        System.out.println("java -jar mocker.jar port directory");
         return;
       }
-      PATH = args[0];
-      Runner.runExample(MockerVehicle.class);
-    }
 
+      APP_PORT = Integer.parseInt(args[0]);
+      PATH = args[1];
+      Runner.runExample(MockerVehicle.class);
+
+}
     @Override
     public void start() throws Exception {
-        System.out.println("Starting server proxy at port: " + appPort);
+        System.out.println("Starting server proxy at port: " + APP_PORT);
 
         vertx.createHttpServer().requestHandler(req -> {
             System.out.println("uri: " + req.uri());
             System.out.println("method:" + req.method());
 
-            String[] parts = req.uri().split("/");
+            String[] parts = cleanUri( req.uri()).split("/");
 
             Path absPath = Paths.get(PATH);
 
@@ -55,7 +68,6 @@ public class MockerVehicle extends AbstractVerticle {
             }
 
             req.response().setChunked(true);
-            req.response().putHeader("Content-Type","application/json");
             req.response().setStatusCode(200);
             if(Files.isRegularFile(absPath)){
               System.out.println("It's regular file");
@@ -79,43 +91,63 @@ public class MockerVehicle extends AbstractVerticle {
               }else{
                 System.out.println("file = " + file);
 
-                String content = getContentWithIgnoreCase(absPath, file);
+                StringRef extUsed = new StringRef();
+                String content = getContentWithIgnoreCase(absPath, file, extUsed);
+
+                String contentType = "text/plain";
+                if( extUsed.data.length() > 0){
+                  if(extUsed.data.indexOf("json") >= 0){
+                    contentType = "application/json";
+                  }
+
+                  if(extUsed.data.indexOf("xml") >= 0){
+                    contentType = "application/xml";
+                  }
+                }
+                req.response().putHeader("Content-Type",contentType);
                 req.response().write(content);
               }
             }
             req.response().end();
-        }).listen(appPort);
+        }).listen(APP_PORT);
     }
 
-    private String getContentWithIgnoreCase(Path abspath, String file){
+    /**
+     * remove query param from uri.
+     * @param uri
+     * @return
+     */
+    private String cleanUri(String uri){
+      String result = uri;
+      int idx = uri.indexOf("?");
+      if( idx != -1){
+        result = uri.substring(0,idx);
+      }
+      return result;
+    }
+
+    private String getContentWithIgnoreCase(Path abspath, String file, StringRef extUsed){
       String result = null;
 
-      //get error file
-      result = getContent(abspath, file + ".error.json");
-      if(result != null){
-        return result;
+      for(String ext: FILES_SEARCH){
+        result = getContent(abspath, file + ext);
+        if(result != null){
+          extUsed.data = ext;
+          break;
+        }
+
+        //tolowercase
+        result = getContent(abspath, file.toLowerCase() + ext);
+        if(result != null){
+          extUsed.data = ext;
+          break;
+        }
       }
 
-
-      //get error file.lowerCase
-      result = getContent(abspath, file.toLowerCase() + ".error.json");
-      if(result != null){
-        return result;
+      if( result == null){
+        result = "FILE NOT FOUND";
       }
-
-      //get json file
-      result = getContent(abspath, file + ".json");
-      if(result != null){
-        return result;
-      }
-
-      //get json file.lowerCase
-      result = getContent(abspath, file.toLowerCase() + ".json");
-      if(result != null){
-        return result;
-      }
-
-      return "FILE NOT FOUND";
+      return result;
     }
 
     private String getContent(Path abspath, String file){
@@ -132,6 +164,14 @@ public class MockerVehicle extends AbstractVerticle {
       }
 
       return result;
+    }
+
+    private class StringRef {
+      public String data;
+
+      public StringRef(){
+        data = "";
+      }
     }
 
 }

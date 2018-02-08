@@ -29,7 +29,16 @@ public class Runner {
     }
 
     public static void runExample(Class clazz) {
-        runExample(CORE_EXAMPLES_JAVA_DIR, clazz, new VertxOptions().setClustered(false), null);
+      VertxOptions opts = new VertxOptions();
+
+      opts.setClustered(false);
+      opts.setBlockedThreadCheckInterval(3601000);
+
+      runExample(
+              CORE_EXAMPLES_JAVA_DIR,
+              clazz,
+              opts,
+              null);
     }
 
     public static void runExample(Class clazz, DeploymentOptions options) {
