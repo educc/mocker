@@ -1,24 +1,18 @@
 package com.edu.mocker;
 
+import com.edu.mocker.utils.ContentFile;
+import com.edu.mocker.utils.StringRef;
 import io.vertx.core.AbstractVerticle;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.*;
-import io.vertx.core.net.ProxyOptions;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.client.WebClient;
-import io.vertx.ext.web.handler.BodyHandler;
+import io.vertx.core.http.HttpServerRequest;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Enumeration;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 public class MockerVehicle extends AbstractVerticle {
   private static String PROPERTIES_PATH = null;
@@ -26,7 +20,11 @@ public class MockerVehicle extends AbstractVerticle {
 
 
   private static final String[] VALID_METHODS = new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"};
-  private static final String[] FILES_SEARCH = new String[]{
+  private static final String[] HEADER_FILES_SEARCH = new String[]{
+          ".header.properties",
+  };
+
+  private static final String[] BODY_FILES_SEARCH = new String[]{
           ".error.json",
           ".json",
           ".error.xml",
@@ -59,16 +57,10 @@ public class MockerVehicle extends AbstractVerticle {
             System.out.println("uri: " + req.uri());
             System.out.println("method:" + req.method());
 
-            String[] parts = cleanUri( req.uri()).split("/");
-
-            Path absPath = Paths.get(PATH);
-
-            for(String item : parts){
-              absPath = absPath.resolve(item);
-            }
+            Path absPath = getLocalPath(req.uri());
 
             req.response().setChunked(true);
-            req.response().setStatusCode(200);
+
             if(Files.isRegularFile(absPath)){
               System.out.println("It's regular file");
               try {
@@ -78,38 +70,80 @@ public class MockerVehicle extends AbstractVerticle {
               }
             }else{
               System.out.println("It's a folder");
-              String file = null;
-              for(String validMethod: VALID_METHODS){
-                if( validMethod.equalsIgnoreCase(req.method().toString()) ){
-                 file = validMethod;
-                }
-              }
 
-              if( file == null){
-                System.out.println("NOT METHOD VALID");
-                req.response().write("NOT METHOD VALID");
-              }else{
-                System.out.println("file = " + file);
-
-                StringRef extUsed = new StringRef();
-                String content = getContentWithIgnoreCase(absPath, file, extUsed);
-
-                String contentType = "text/plain";
-                if( extUsed.data.length() > 0){
-                  if(extUsed.data.indexOf("json") >= 0){
-                    contentType = "application/json";
-                  }
-
-                  if(extUsed.data.indexOf("xml") >= 0){
-                    contentType = "application/xml";
-                  }
-                }
-                req.response().putHeader("Content-Type",contentType);
-                req.response().write(content);
-              }
+              setHeader(req, absPath);
+              setContent(req, absPath);
             }
             req.response().end();
         }).listen(APP_PORT);
+    }
+
+    private Path getLocalPath(String uri){
+      String[] parts = cleanUri(uri).split("/");
+
+      Path absPath = Paths.get(PATH);
+
+      for(String item : parts){
+        absPath = absPath.resolve(item);
+      }
+      return absPath;
+    }
+
+    private void setContent(HttpServerRequest req, Path localPath){
+
+      String file = null;
+      for(String validMethod: VALID_METHODS){
+        if( validMethod.equalsIgnoreCase(req.method().toString()) ){
+          file = validMethod;
+        }
+      }
+
+      if( file == null){
+        System.out.println("NOT METHOD VALID");
+        req.response().write("NOT METHOD VALID");
+      }else {
+        System.out.println("file = " + file);
+
+        StringRef extUsed = new StringRef();
+        String content = ContentFile.getContentWithIgnoreCase(
+                localPath, file, extUsed, BODY_FILES_SEARCH);
+
+        String contentType = "text/plain";
+        int statusCode = 404;
+        if (extUsed.data.length() > 0) {
+          if (extUsed.data.indexOf("json") >= 0) {
+            contentType = "application/json";
+            statusCode = 200;
+          }
+
+          if (extUsed.data.indexOf("xml") >= 0) {
+            contentType = "application/xml";
+            statusCode = 200;
+          }
+
+          if (extUsed.data.indexOf("error") >= 0) {
+            statusCode = 500;
+          }
+        }
+        req.response().putHeader("Content-Type", contentType);
+        req.response().setStatusCode(statusCode);
+        req.response().write(content);
+      }
+    }
+
+    private void setHeader(HttpServerRequest req, Path localPath){
+      req.response().putHeader("Cache-Control","no-cache");
+
+      Properties prop = ContentFile.readProperties(
+              localPath, req.method().toString(), HEADER_FILES_SEARCH);
+
+      if (prop != null){
+        for(Map.Entry<Object, Object> key: prop.entrySet()){
+          req.response().putHeader(
+                  key.getKey().toString(),
+                  key.getValue().toString());
+        }
+      }
     }
 
     /**
@@ -126,52 +160,5 @@ public class MockerVehicle extends AbstractVerticle {
       return result;
     }
 
-    private String getContentWithIgnoreCase(Path abspath, String file, StringRef extUsed){
-      String result = null;
-
-      for(String ext: FILES_SEARCH){
-        result = getContent(abspath, file + ext);
-        if(result != null){
-          extUsed.data = ext;
-          break;
-        }
-
-        //tolowercase
-        result = getContent(abspath, file.toLowerCase() + ext);
-        if(result != null){
-          extUsed.data = ext;
-          break;
-        }
-      }
-
-      if( result == null){
-        result = "FILE NOT FOUND";
-      }
-      return result;
-    }
-
-    private String getContent(Path abspath, String file){
-      String result = null;
-      Path newpath = abspath.resolve(file);
-      System.out.println(newpath.toUri());
-      if( Files.exists(newpath) ){
-        try {
-          result = new String(Files.readAllBytes(newpath));
-        } catch (IOException e) {
-          System.err.println(e);
-          result = null;
-        }
-      }
-
-      return result;
-    }
-
-    private class StringRef {
-      public String data;
-
-      public StringRef(){
-        data = "";
-      }
-    }
 
 }
