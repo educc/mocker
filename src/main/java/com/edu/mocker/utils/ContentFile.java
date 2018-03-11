@@ -6,6 +6,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Properties;
 
 public class ContentFile {
@@ -36,45 +37,20 @@ public class ContentFile {
     return prop;
   }
 
-  public static String getContentWithIgnoreCase(
-          Path abspath, String file, StringRef extUsed, String[] filesSearchExtension){
-    String result = null;
+  public static Path getPathWithIgnoreCase(Path abspath, String file, String[] filesSearchExtension){
 
     for(String ext: filesSearchExtension){
-      result = getContent(abspath, file + ext);
-      if(result != null){
-        extUsed.data = ext;
-        break;
+      Path result = abspath.resolve(file + ext);
+      if( Files.exists(result) ){
+        return result;
       }
 
       //tolowercase
-      result = getContent(abspath, file.toLowerCase() + ext);
-      if(result != null){
-        extUsed.data = ext;
-        break;
+      result = abspath.resolve(file.toLowerCase() + ext);
+      if( Files.exists(result) ){
+        return result;
       }
     }
-
-    if( result == null){
-      result = "FILE NOT FOUND";
-    }
-    return result;
+    return null;
   }
-
-  private static String getContent(Path abspath, String file){
-    String result = null;
-    Path newpath = abspath.resolve(file);
-    System.out.println(newpath.toUri());
-    if( Files.exists(newpath) ){
-      try {
-        result = new String(Files.readAllBytes(newpath));
-      } catch (IOException e) {
-        System.err.println(e);
-        result = null;
-      }
-    }
-
-    return result;
-  }
-
 }

@@ -1,5 +1,7 @@
 package com.edu.mocker;
 
+import com.edu.mocker.contentwriter.ContentWriteFactory;
+import com.edu.mocker.contentwriter.ContentWriter;
 import com.edu.mocker.utils.ContentFile;
 import com.edu.mocker.utils.StringRef;
 import io.vertx.core.AbstractVerticle;
@@ -26,6 +28,7 @@ public class MockerVehicle extends AbstractVerticle {
 
   private static final String[] BODY_FILES_SEARCH = new String[]{
           ".error.json",
+          ".stream.json",
           ".json",
           ".error.xml",
           ".xml",
@@ -51,30 +54,35 @@ public class MockerVehicle extends AbstractVerticle {
 }
     @Override
     public void start() throws Exception {
-        System.out.println("Starting server proxy at port: " + APP_PORT);
+        System.out.println(String.format("%s %s", App.NAME, App.VERSION));
+        System.out.println("Starting server mocker at port: " + APP_PORT);
 
         vertx.createHttpServer().requestHandler(req -> {
-            System.out.println("uri: " + req.uri());
-            System.out.println("method:" + req.method());
-
             Path absPath = getLocalPath(req.uri());
 
             req.response().setChunked(true);
 
-            if(Files.isRegularFile(absPath)){
-              System.out.println("It's regular file");
+            if (Files.isRegularFile(absPath)) {
+              System.out.println(String.format("%s -> serve static file",req.uri()));
               try {
                 req.response().write(Buffer.buffer(Files.readAllBytes(absPath)));
               } catch (IOException e) {
                 req.response().write(e.toString());
               }
-            }else{
-              System.out.println("It's a folder");
+            } else {
+              System.out.println(String.format("%s %s", req.method(), req.uri()));
 
-              setHeader(req, absPath);
-              setContent(req, absPath);
+              if ( isMethodAllowed(req) ) {
+                  ContentWriter contentWriter = ContentWriteFactory.get(req, absPath);
+                  if ( contentWriter == null) {
+                      writeDefaultResponse(req, "FILE NOT FOUND");
+                  } else {
+                    contentWriter.writeHeaderAndBody();
+                  }
+              } else {
+                  writeDefaultResponse(req, "NOT METHOD VALID");
+              }
             }
-            req.response().end();
         }).listen(APP_PORT);
     }
 
@@ -89,63 +97,22 @@ public class MockerVehicle extends AbstractVerticle {
       return absPath;
     }
 
-    private void setContent(HttpServerRequest req, Path localPath){
-
-      String file = null;
-      for(String validMethod: VALID_METHODS){
-        if( validMethod.equalsIgnoreCase(req.method().toString()) ){
-          file = validMethod;
+    private boolean isMethodAllowed(HttpServerRequest req){
+        String file = null;
+        for(String validMethod: VALID_METHODS){
+            if( validMethod.equalsIgnoreCase(req.method().toString()) ){
+                file = validMethod;
+            }
         }
-      }
-
-      if( file == null){
-        System.out.println("NOT METHOD VALID");
-        req.response().write("NOT METHOD VALID");
-      }else {
-        System.out.println("file = " + file);
-
-        StringRef extUsed = new StringRef();
-        String content = ContentFile.getContentWithIgnoreCase(
-                localPath, file, extUsed, BODY_FILES_SEARCH);
-
-        String contentType = "text/plain";
-        int statusCode = 404;
-        if (extUsed.data.length() > 0) {
-          if (extUsed.data.indexOf("json") >= 0) {
-            contentType = "application/json";
-            statusCode = 200;
-          }
-
-          if (extUsed.data.indexOf("xml") >= 0) {
-            contentType = "application/xml";
-            statusCode = 200;
-          }
-
-          if (extUsed.data.indexOf("error") >= 0) {
-            statusCode = 500;
-          }
-        }
-        req.response().putHeader("Content-Type", contentType);
-        req.response().setStatusCode(statusCode);
-        req.response().write(content);
-      }
+        return file != null;
     }
 
-    private void setHeader(HttpServerRequest req, Path localPath){
-      req.response().putHeader("Cache-Control","no-cache");
-
-      Properties prop = ContentFile.readProperties(
-              localPath, req.method().toString(), HEADER_FILES_SEARCH);
-
-      if (prop != null){
-        for(Map.Entry<Object, Object> key: prop.entrySet()){
-          req.response().putHeader(
-                  key.getKey().toString(),
-                  key.getValue().toString());
-        }
-      }
+    private void writeDefaultResponse(HttpServerRequest req, String message){
+        req.response().putHeader("Cache-Control","no-cache");
+        req.response().putHeader("Content-Type","text/html");
+        req.response().write(message);
+        req.response().end();
     }
-
     /**
      * remove query param from uri.
      * @param uri
