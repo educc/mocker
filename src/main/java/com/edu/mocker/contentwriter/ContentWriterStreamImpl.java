@@ -34,7 +34,19 @@ public class ContentWriterStreamImpl extends  ContentWriterDefaultImpl {
 
     @Override
     public String getContentType() {
-        return "application/stream+json";
+        if ( isAcceptStreamJson() ){
+            return "application/stream+json";
+        }
+        return "application/json";
+    }
+
+    private boolean isAcceptStreamJson(){
+        boolean result = true;
+        String accept = req.getHeader("accept");
+        if (accept != null && accept.toLowerCase().contains("application/json")) {
+            result = false;
+        }
+        return result;
     }
 
     @Override
@@ -45,6 +57,12 @@ public class ContentWriterStreamImpl extends  ContentWriterDefaultImpl {
         } catch (FileNotFoundException e) {
             req.response().write("ERROR at read file " + contentFile.toString() + " :");
             req.response().write(e.getMessage());
+            req.response().end();
+            return;
+        }
+
+        if(!isAcceptStreamJson()){
+            req.response().write(content.toString());
             req.response().end();
             return;
         }
