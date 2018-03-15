@@ -14,8 +14,10 @@ public interface ContentWriter {
     String getContentType();
     void writeContent();
     void writeHeader();
+    void writeDefaultHeader();
 
     default void writeHeaderAndBody(){
+        writeDefaultHeader();
         writeHeader();
         writeContent();
     }

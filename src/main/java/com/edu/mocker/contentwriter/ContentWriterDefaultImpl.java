@@ -64,8 +64,6 @@ public class ContentWriterDefaultImpl implements ContentWriter {
 
     @Override
     public void writeHeader() {
-        req.response().putHeader("Cache-Control","no-cache");
-
         Properties prop = ContentFile.readProperties(
                 contentFile.getParent(),
                 req.method().toString(),
@@ -78,8 +76,13 @@ public class ContentWriterDefaultImpl implements ContentWriter {
                         key.getValue().toString());
             }
         }
-
         req.response().putHeader("Content-Type", getContentType());
         req.response().setStatusCode(getStatusCode());
     }
+
+    @Override
+    public void writeDefaultHeader() {
+        req.response().putHeader("Cache-Control","no-cache");
+    }
+
 }

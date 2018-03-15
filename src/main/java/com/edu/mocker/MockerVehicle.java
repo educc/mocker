@@ -64,16 +64,13 @@ public class MockerVehicle extends AbstractVerticle {
 
             if (Files.isRegularFile(absPath)) {
               System.out.println(String.format("%s -> serve static file",req.uri()));
-              try {
-                req.response().write(Buffer.buffer(Files.readAllBytes(absPath)));
-              } catch (IOException e) {
-                req.response().write(e.toString());
-              }
+              req.response().sendFile(absPath.toString());
+              req.response().end();
             } else {
               System.out.println(String.format("%s %s", req.method(), req.uri()));
 
               if ( isMethodAllowed(req) ) {
-                  ContentWriter contentWriter = ContentWriteFactory.get(req, absPath);
+                  ContentWriter contentWriter = ContentWriteFactory.get(vertx,req, absPath);
                   if ( contentWriter == null) {
                       writeDefaultResponse(req, "FILE NOT FOUND");
                   } else {
