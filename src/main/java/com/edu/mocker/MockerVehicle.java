@@ -34,7 +34,7 @@ public class MockerVehicle extends AbstractVerticle {
           ".xml",
   };
 
-    private static String PATH = "C:\\www";
+    private static String PATH = "/Users/ecacho/dev/mock";
 
     // Convenience method so you can run it in your IDE
     public static void main(String[] args) {
